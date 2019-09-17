@@ -19,6 +19,7 @@
 package org.keedio.flume.source;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,7 +63,7 @@ public class SQLSource extends AbstractSource implements Configurable, PollableS
     private static final Logger LOG = LoggerFactory.getLogger(SQLSource.class);
     protected SQLSourceHelper sqlSourceHelper;
     private SqlSourceCounter sqlSourceCounter;
-    private CSVWriter csvWriter;
+    private PrintWriter printWriter ;
     private HibernateHelper hibernateHelper;
        
     /**
@@ -86,7 +87,7 @@ public class SQLSource extends AbstractSource implements Configurable, PollableS
         hibernateHelper.establishSession();
        
         /* Instantiate the CSV Writer */
-        csvWriter = new CSVWriter(new ChannelWriter(),sqlSourceHelper.getDelimiterEntry().charAt(0));
+        printWriter = new PrintWriter(new ChannelWriter());
         
     }  
     
@@ -99,15 +100,15 @@ public class SQLSource extends AbstractSource implements Configurable, PollableS
 		try {
 			sqlSourceCounter.startProcess();			
 			
-			List<List<Object>> result = hibernateHelper.executeQuery();
+            List<Map<String,Object>> result = hibernateHelper.executeQueryForJson();
 						
 			if (!result.isEmpty())
 			{
-				csvWriter.writeAll(sqlSourceHelper.getAllRows(result),sqlSourceHelper.encloseByQuotes());
-				csvWriter.flush();
-				sqlSourceCounter.incrementEventCount(result.size());
-				
-				sqlSourceHelper.updateStatusFile();
+                sqlSourceHelper.writeAllRows(result,printWriter);
+                printWriter.flush();
+                sqlSourceCounter.incrementEventCount(result.size());
+                sqlSourceHelper.updateStatusFile();
+
 			}
 			
 			sqlSourceCounter.endProcess(result.size());
@@ -118,7 +119,7 @@ public class SQLSource extends AbstractSource implements Configurable, PollableS
 						
 			return Status.READY;
 			
-		} catch (IOException | InterruptedException e) {
+		} catch (Exception e) {
 			LOG.error("Error procesing row", e);
 			return Status.BACKOFF;
 		}
@@ -146,8 +147,8 @@ public class SQLSource extends AbstractSource implements Configurable, PollableS
         try 
         {
             hibernateHelper.closeSession();
-            csvWriter.close();    
-        } catch (IOException e) {
+            printWriter.close();
+        } catch (Exception e) {
         	LOG.warn("Error CSVWriter object ", e);
         } finally {
         	this.sqlSourceCounter.stop();
